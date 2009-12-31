@@ -4,7 +4,7 @@
 
 register_nickname(Name, Room) ->
     Nickname = {Name, Room},
-    Pid = spawn(chat_client, handle_messages, [Nickname]),
+    Pid = spawn(chat_client, handle_messages, []),
     message_router:register_nick(Nickname, Pid).
 
 unregister_nickname(Name, Room) ->
@@ -15,11 +15,11 @@ send_message(OwnName, Room, MessageBody) ->
     Sender = {OwnName, Room},
     message_router:send_chat_message(Sender, MessageBody).
 
-handle_messages(Nickname) ->
+handle_messages() ->
     receive
-	{printmsg, MessageBody} ->
-	    io:format("~p sent: ~p~n", [element(1,Nickname), MessageBody]),
-	    handle_messages(Nickname);
+	{printmsg, ClientName, MessageBody} ->
+	    io:format("~p sent: ~p~n", [element(1,ClientName), MessageBody]),
+	    handle_messages();
 	stop ->
 	    ok
     end.

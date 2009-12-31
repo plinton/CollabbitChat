@@ -14,7 +14,7 @@ stop() ->
   message_store:stop().
 
 send_chat_message(ClientName, MessageBody) ->
-  global:send(?SERVER, {send_chat_msg, ClientName, MessageBody}).
+  global:send(?SERVER, {broadcast, ClientName, MessageBody}).
 
 register_nick(ClientName, ClientPid) ->
   global:send(?SERVER, {register_nick, ClientName, ClientPid}).
@@ -25,16 +25,16 @@ unregister_nick(ClientName) ->
 
 route_messages(Clients, Chatrooms) ->
   receive
-    {broadcast, From, MessageBody} ->
-      ClientList = dict:fetch(element(2, From), Chatrooms),
-      lists:foreach(fun(Client) -> ?SERVER ! 
-        {send_chat_message, Client, MessageBody} end, 
-        ClientList),
+    {broadcast, Sender, MessageBody} ->
+      ClientList = dict:fetch(element(2, Sender), Chatrooms),
+      lists:foreach(fun(Client) -> global:send(?SERVER, 
+        {send_chat_msg, Client, MessageBody}) end, ClientList),
         route_messages(Clients, Chatrooms);   
+    %TODO: change save_message so that it saves the sender    
     {send_chat_msg, ClientName, MessageBody} ->
       case dict:find(ClientName, Clients) of
 	    {ok, ClientPid} ->
-	      ClientPid ! {printmsg, MessageBody};
+	      ClientPid ! {printmsg, ClientName, MessageBody};
 	    error ->
 	      message_store:save_message(ClientName, MessageBody),
 	      io:format("Archived message for ~p~n", [ClientName])
@@ -42,14 +42,10 @@ route_messages(Clients, Chatrooms) ->
       route_messages(Clients, Chatrooms);
     {register_nick, ClientName, ClientPid} ->
       Messages = message_store:find_messages(ClientName),
-      lists:foreach(fun(Msg) -> ClientPid ! {printmsg, Msg} end, Messages),
+      lists:foreach(fun(Msg) -> ClientPid ! {printmsg, ClientName, Msg} end, 
+        Messages),
       RoomName = element(2, ClientName),
-      case dict:is_key(RoomName, Chatrooms) of
-        false ->
-          Rooms = dict:store(RoomName, [ClientName], Chatrooms);
-        true ->
-          Rooms = dict:append(RoomName, ClientName, Chatrooms)
-        end,
+      Rooms = dict:append(RoomName, ClientName, Chatrooms),  
       route_messages(dict:store(ClientName, ClientPid, Clients), Rooms);
     {unregister_nick, ClientName} ->
       case dict:find(ClientName, Clients) of
